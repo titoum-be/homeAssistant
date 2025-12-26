@@ -1,0 +1,176 @@
+- id: '9962189825551'
+  alias: "Alerte Consommation Gaz Élevée"
+  description: "Notification si la consommation dépasse 4 m³"
+  trigger:
+    - platform: time
+      at:
+        - '12:00:00'
+        - '18:00:00'
+        - '22:00:00'
+  condition:
+    - condition: template
+      value_template: >
+        {% set heating = states('sensor.e3_vitodens_200_0821_heating_gas_consumption_today') | float(0) %}
+        {% set dhw = states('sensor.e3_vitodens_200_0821_dhw_gas_consumption_today') | float(0) %}
+        {{ (heating + dhw) > 4 }}
+  action:
+    - action: persistent_notification.create
+      data:
+        title: "⚠️ Alerte Consommation Gaz"
+        message: >
+          {% set heating = states('sensor.e3_vitodens_200_0821_heating_gas_consumption_today') | float(0) %}
+          {% set dhw = states('sensor.e3_vitodens_200_0821_dhw_gas_consumption_today') | float(0) %}
+          {% set total = (heating + dhw) | round(2) %}
+          La consommation totale de gaz aujourd'hui est de {{ total }} m³.
+          (Chauffage: {{ heating | round(2) }} m³ / Eau Chaude: {{ dhw | round(2) }} m³)
+  mode: single
+- id: '1740982103646'
+  alias: chaudière off
+  description: ''
+  triggers:
+  - device_id: 79c7287e060265e6307c27a56beee67e
+    domain: climate
+    entity_id: dd0e635be965aa4d7d9a89daa260bbd8
+    type: current_temperature_changed
+    trigger: device
+    above: 18.9
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 0
+  conditions:
+  - condition: device
+    device_id: 79c7287e060265e6307c27a56beee67e
+    domain: climate
+    entity_id: dd0e635be965aa4d7d9a89daa260bbd8
+    type: is_hvac_mode
+    hvac_mode: auto
+  actions:
+  - device_id: 79c7287e060265e6307c27a56beee67e
+    domain: climate
+    entity_id: dd0e635be965aa4d7d9a89daa260bbd8
+    type: set_hvac_mode
+    hvac_mode: 'off'
+  mode: single
+- id: '1740989176852'
+  alias: Chaudière ON (auto)
+  description: ''
+  triggers:
+  - device_id: 79c7287e060265e6307c27a56beee67e
+    domain: climate
+    entity_id: dd0e635be965aa4d7d9a89daa260bbd8
+    type: current_temperature_changed
+    trigger: device
+    below: 18.6
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 0
+  conditions:
+  - condition: device
+    device_id: 79c7287e060265e6307c27a56beee67e
+    domain: climate
+    entity_id: dd0e635be965aa4d7d9a89daa260bbd8
+    type: is_hvac_mode
+    hvac_mode: 'off'
+  actions:
+  - device_id: 79c7287e060265e6307c27a56beee67e
+    domain: climate
+    entity_id: dd0e635be965aa4d7d9a89daa260bbd8
+    type: set_hvac_mode
+    hvac_mode: auto
+  mode: single
+- id: '1741249546747'
+  alias: Update_ViCare_day
+  description: Update Vicare Entities every 5 minutes
+  triggers:
+  - trigger: time_pattern
+    minutes: /5
+  conditions:
+  - condition: time
+    after: 05:30:00
+    before: '22:30:00'
+    weekday:
+    - sat
+    - fri
+    - thu
+    - wed
+    - tue
+    - mon
+    - sun
+  actions:
+  - action: homeassistant.update_entity
+    metadata: {}
+    data:
+      entity_id: '{{ integration_entities(''vicare'') }}'
+  mode: single
+- id: '1741250530010'
+  alias: Update_ViCare_night
+  description: Update Vicare Entities every 30 minutes
+  triggers:
+  - trigger: time_pattern
+    minutes: /30
+  conditions:
+  - condition: time
+    after: '22:30:00'
+    before: 05:30:00
+    weekday:
+    - sat
+    - fri
+    - thu
+    - wed
+    - tue
+    - mon
+    - sun
+  actions:
+  - action: homeassistant.update_entity
+    metadata: {}
+    data:
+      entity_id: '{{ integration_entities(''vicare'') }}'
+  mode: single
+- id: '1744525381749'
+  alias: getHyponToken
+  description: ''
+  triggers:
+  - trigger: time_pattern
+    hours: /1
+  conditions:
+  - condition: sun
+    before: sunset
+    after: sunrise
+  actions:
+  - action: shell_command.get_hypontoken
+    metadata: {}
+    data: {}
+    response_variable: service.hyponToken
+  mode: single
+- id: '1744526990277'
+  alias: getHyponData
+  description: ''
+  triggers:
+  - trigger: time_pattern
+    minutes: /4
+  conditions:
+  - condition: sun
+    before: sunset
+    after: sunrise
+    after_offset: +00:04:00
+    before_offset: -00:20:00
+  actions:
+  - action: shell_command.get_hypondata
+    metadata: {}
+    data: {}
+  mode: single
+- id: '1744632020424'
+  alias: setHyponCloseDay
+  description: ''
+  triggers:
+  - trigger: sun
+    event: sunset
+    offset: +00:30:00
+  conditions: []
+  actions:
+  - action: shell_command.set_hyponclose
+    metadata: {}
+    data: {}
+  mode: single

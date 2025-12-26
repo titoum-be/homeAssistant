@@ -1,0 +1,5 @@
+# getting my hyponCloud info
+shell_command:
+  get_hypontoken: /bin/bash /config/scripts/HyponCloudToken.sh
+  get_hypondata: /bin/bash /config/scripts/HyponCloudGetData.sh
+  set_hyponclose: /bin/bash /config/scripts/HyponCloudCloseDay.sh
