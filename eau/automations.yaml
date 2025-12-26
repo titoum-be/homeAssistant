@@ -1,0 +1,52 @@
+- id: '9962189825552'
+  alias: Leak Detection - Low Constant Flow
+  description: Alert if water flow stays in the leak range (0.5 - 5.0 L/min) for 5 minutes
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.watermeter_5c2faf06aa32_active_water_usage
+      above: 0.5
+      below: 5.0
+      for:
+        minutes: 5
+  action:
+    - action: notify.mobile_app_your_phone
+      data:
+        title: "🚰 Potential Water Leak"
+        message: "Flow has been constant ({{ states('sensor.watermeter_5c2faf06aa32_active_water_usage') }} L/min) for 5 minutes."
+        data:
+          priority: high
+          ttl: 0
+          color: "red"
+          # This makes the notification stick on Android/iOS
+          tag: "water-leak-alert" 
+  mode: restart
+- id: '9962189825553'
+  alias: Groupe hydrophore running for long time
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.groupe_hydrophore_power
+      above: 100
+      for:
+        minutes: 5
+  action:
+    - repeat:
+        # Keep repeating while the power is still high
+        while:
+          - condition: numeric_state
+            entity_id: sensor.groupe_hydrophore_power
+            above: 100
+        sequence:
+          - action: notify.notify
+            data:
+              title: "🚨 CRITICAL: Hydrophore still running!"
+              message: "The pump has been running for a long time. Current draw: {{ states('sensor.groupe_hydrophore_power') }}W"
+          # Wait 5 minutes before sending the next alert
+          - delay:
+              minutes: 5
+              
+    # This runs ONLY after the loop finishes (when power drops below 100)
+    - action: notify.mobile_app_your_phone
+      data:
+        title: "✅ Hydrophore Stopped"
+        message: "The hydrophore group has finally stopped running."
+  mode: restart # Restarts the logic if the state bounces
