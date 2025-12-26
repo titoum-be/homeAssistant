@@ -1,0 +1,18 @@
+#logic for water softner
+counter:
+  water_during_night:
+    name: check if water betwen 2 to 3 increased by 100L
+
+counter:
+  softner_cycle:
+    name: number of cycle for this year
+    
+counter:
+  softner_cycle_last_year:
+    name: number of cycle for past years
+    
+input_number:
+  device_initial_value:
+    name: Device Initial Value
+    min: 0
+    max: 10000

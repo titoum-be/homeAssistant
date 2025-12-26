@@ -1,0 +1,79 @@
+- id: '9962189825554'
+  alias: Counter softner cycle
+  description: Record water at 2am and compare at 4am
+  triggers:
+    - trigger: time
+      at: "02:00:00"
+      id: "start"
+    - trigger: time
+      at: "04:00:00"
+      id: "end"
+  actions:
+    - choose:
+        # AT 02:00 - Save the baseline reading
+        - conditions:
+            - condition: trigger
+              id: "start"
+          sequence:
+            - action: input_number.set_value
+              target:
+                entity_id: input_number.water_during_night
+              data:
+                value: "{{ states('sensor.watermeter_5c2faf06aa32_total_water_usage') | float(0) }}"
+
+        # AT 04:00 - Calculate difference and increment if > 100
+        - conditions:
+            - condition: trigger
+              id: "end"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: >
+                    {% set current = states('sensor.watermeter_5c2faf06aa32_total_water_usage') | float(0) %}
+                    {% set baseline = states('input_number.water_during_night') | float(0) %}
+                    {{ (current - baseline) > 100 }}
+              then:
+                - action: counter.increment
+                  target:
+                    entity_id: counter.softner_cycle
+  mode: parallel
+- id: archive_and_reset_softner_cycle
+  alias: Archive & reset softner cycle counter (Yearly)
+  triggers:
+    - trigger: time
+      at: "00:00:00"
+  conditions:
+    - condition: template
+      value_template: "{{ now().month == 1 and now().day == 1 }}"
+  actions:
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.softner_cycle_last_year
+      data:
+        # Added (0) as a safety default
+        value: "{{ states('counter.softner_cycle') | int(0) }}"
+    - action: counter.reset
+      target:
+        entity_id: counter.softner_cycle
+  mode: single
+- id: notify_softner_cycle_every_10
+  alias: Notify every 10 softner cycles
+  description: Send notification when counter.softner_cycle increases by 10
+  triggers:
+    - trigger: state
+      entity_id: counter.softner_cycle
+  conditions:
+    # 1. Ensure the state is actually a number
+    # 2. Ensure it's not a change of attributes (from_state != to_state)
+    # 3. Check the modulo logic
+    - condition: template
+      value_template: >
+        {% set new_val = trigger.to_state.state | int(0) %}
+        {% set old_val = trigger.from_state.state | int(0) %}
+        {{ new_val > 0 and new_val % 10 == 0 and new_val != old_val }}
+  actions:
+    - action: notify.notify
+      data:
+        title: "Softener maintenance"
+        message: "⚠️ L'adoucisseur a effectué {{ states('counter.softner_cycle') }} cycles -> Vérifiez le niveau de sel ⚠️."
+  mode: single
