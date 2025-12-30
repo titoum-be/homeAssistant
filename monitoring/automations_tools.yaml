@@ -1,0 +1,315 @@
+- id: '9962189825549'
+  alias: "Alerte Connectivité Zigbee2MQTT"
+  description: "Notification si le pont Zigbee2MQTT est déconnecté ou indisponible"
+  trigger:
+    # Cas 1 : Le pont signale qu'il est hors ligne
+    - platform: state
+      entity_id: binary_sensor.zigbee2mqtt_bridge_connection_state
+      to: "off"
+      for:
+        minutes: 5
+    # Cas 2 : Le service est planté (l'entité ne répond plus du tout)
+    - platform: state
+      entity_id: binary_sensor.zigbee2mqtt_bridge_connection_state
+      to: "unavailable"
+      for:
+        minutes: 5
+  action:
+    # Notification persistante dans l'interface Home Assistant
+    - action: persistent_notification.create
+      data:
+        title: "🚨 Système : Zigbee Hors Ligne"
+        message: "Le pont Zigbee2MQTT est déconnecté depuis plus de 5 minutes. Vérifiez l'état du module complémentaire."
+
+    # Notification sur votre téléphone (Remplacez par votre device)
+    - action: notify.mobile_app_redmi_13
+      data:
+        title: "🚨 Alerte Zigbee"
+        message: "La connexion au pont Zigbee2MQTT est perdue !"
+        data:
+          priority: high
+          color: "red"
+          # Permet de regrouper les notifications si le problème persiste
+          tag: "z2m-disconnect"
+  mode: single
+- id: '99621898255492'
+  alias: "Notify if any Zigbee device is offline"
+  description: "Checks every 5 minutes for unavailable MQTT/Zigbee entities"
+  trigger:
+    - platform: time_pattern
+      minutes: "/5"
+  action:
+    - variables:
+        # Get all entities from the MQTT integration that are currently unavailable
+        offline_entities: >
+          {{ integration_entities('mqtt') 
+             | select('is_state', 'unavailable') 
+             | map('state_attr', 'friendly_name') 
+             | list }}
+    - if:
+        - condition: template
+          value_template: "{{ offline_entities | count > 0 }}"
+      then:
+        - action: notify.mobile_app_redmi_13
+          data:
+            title: "🚨 Offline Zigbee Devices 🚨"
+            message: "The following devices are unavailable: {{ offline_entities | join(', ') }}"       
+- id: '9962189825550'
+  alias: "Notification Mise à Jour HACS"
+  description: "Alerte quand une mise à jour HACS ou une intégration HACS est disponible."
+  trigger:
+    - platform: state
+      entity_id: update.hacs # Verifiez si c'est update.hacs ou update.hacs_update
+      to: "on"
+  action:
+    # Notification sur le tableau de bord
+    - action: persistent_notification.create
+      data:
+        title: "🚀 Mise à jour HACS"
+        message: >
+          Une nouvelle version ({{ state_attr('update.hacs', 'latest_version') }}) est disponible. 
+          Version installée : {{ state_attr('update.hacs', 'installed_version') }}.
+          [Voir les changements]({{ state_attr('update.hacs', 'release_url') }})
+
+    # Notification sur votre téléphone (Optionnel)
+    - action: notify.mobile_app_redmi_13
+      data:
+        title: "🚀 Mise à jour HACS"
+        message: "Version {{ state_attr('update.hacs', 'latest_version') }} est prête."
+        data:
+          clickAction: "{{ state_attr('update.hacs', 'release_url') }}"
+          url: "{{ state_attr('update.hacs', 'release_url') }}"
+- id: '9962189825551'
+  alias: "Alerte Consommation Gaz Élevée"
+  description: "Notification si la consommation dépasse 4 m³"
+  trigger:
+    - platform: time
+      at:
+        - '12:00:00'
+        - '18:00:00'
+        - '22:00:00'
+  condition:
+    - condition: template
+      value_template: >
+        {% set heating = states('sensor.e3_vitodens_200_0821_heating_gas_consumption_today') | float(0) %}
+        {% set dhw = states('sensor.e3_vitodens_200_0821_dhw_gas_consumption_today') | float(0) %}
+        {{ (heating + dhw) > 4 }}
+  action:
+    - action: persistent_notification.create
+      data:
+        title: "⚠️ Alerte Consommation Gaz"
+        message: >
+          {% set heating = states('sensor.e3_vitodens_200_0821_heating_gas_consumption_today') | float(0) %}
+          {% set dhw = states('sensor.e3_vitodens_200_0821_dhw_gas_consumption_today') | float(0) %}
+          {% set total = (heating + dhw) | round(2) %}
+          La consommation totale de gaz aujourd'hui est de {{ total }} m³.
+          (Chauffage: {{ heating | round(2) }} m³ / Eau Chaude: {{ dhw | round(2) }} m³)
+  mode: single
+- id: '9962189825552'
+  alias: Leak Detection - Low Constant Flow
+  description: Alert if water flow stays in the leak range (0.5 - 5.0 L/min) for 5 minutes
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.watermeter_5c2faf06aa32_active_water_usage
+      above: 0.5
+      below: 5.0
+      for:
+        minutes: 5
+  action:
+    - action: notify.mobile_app_redmi_13
+      data:
+        title: "🚰 Potential Water Leak"
+        message: "Flow has been constant ({{ states('sensor.watermeter_5c2faf06aa32_active_water_usage') }} L/min) for 5 minutes."
+        data:
+          priority: high
+          ttl: 0
+          color: "red"
+          # This makes the notification stick on Android/iOS
+          tag: "water-leak-alert" 
+  mode: restart
+- id: '9962189825553'
+  alias: Groupe hydrophore running for long time
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.groupe_hydrophore_power
+      above: 100
+      for:
+        minutes: 5
+  action:
+    - repeat:
+        # Keep repeating while the power is still high
+        while:
+          - condition: numeric_state
+            entity_id: sensor.groupe_hydrophore_power
+            above: 100
+        sequence:
+          - action: notify.mobile_app_redmi_13
+            data:
+              title: "🚨 CRITICAL: Hydrophore still running!"
+              message: "The pump has been running for a long time. Current draw: {{ states('sensor.groupe_hydrophore_power') }}W"
+          # Wait 5 minutes before sending the next alert
+          - delay:
+              minutes: 5
+              
+    # This runs ONLY after the loop finishes (when power drops below 100)
+    - action: notify.notify
+      data:
+        title: "✅ Hydrophore Stopped"
+        message: "The hydrophore group has finally stopped running."
+  mode: restart # Restarts the logic if the state bounces
+- id: '1699719607598'
+  alias: éteindre TV
+  description: ''
+  trigger:
+  - type: power
+    platform: device
+    device_id: 0679c07d6a5d2e6c172e49c432a394fb
+    entity_id: 4648fabe14112b56212c5b2c37884c40
+    domain: sensor
+    below: 10
+    for:
+      hours: 0
+      minutes: 10
+      seconds: 0
+  condition: []
+  action:
+  - type: turn_off
+    device_id: 0679c07d6a5d2e6c172e49c432a394fb
+    entity_id: 02d86c98f0c955bcaa7a80799a7f154c
+    domain: switch
+  - type: turn_off
+    device_id: e5102c3dcb971a63b07687f534727a11
+    entity_id: 0acf239387b56c9383106d38cb3f9890
+    domain: switch
+  mode: single
+- id: '1710921050499'
+  alias: Laptop ON
+  description: here we go again
+  triggers:
+  - at: 08:20:00
+    trigger: time
+  conditions:
+  - condition: time
+    weekday:
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+  actions:
+  - type: turn_on
+    device_id: 23a20e2142896b4d8dcc1fd55647bf5e
+    entity_id: 05e5bedc72a5cfbe99daf08416bf6ba1
+    domain: switch
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 10
+      milliseconds: 0
+  - metadata: {}
+    data:
+      broadcast_port: 9
+      mac: 38:7C:76:39:60:EA
+    action: wake_on_lan.send_magic_packet
+  - action: wake_on_lan.send_magic_packet
+    metadata: {}
+    data:
+      broadcast_port: 9
+      mac: 38:7C:76:1A:16:03
+  mode: single
+- id: '1710921080475'
+  alias: Laptop OFF
+  description: here we go again
+  trigger:
+  - type: power
+    platform: device
+    device_id: 23a20e2142896b4d8dcc1fd55647bf5e
+    entity_id: 03f998f60ee8b2ab4d204cacd4bd491c
+    domain: sensor
+    below: 20
+    for:
+      hours: 0
+      minutes: 1
+      seconds: 0
+  condition:
+  - condition: time
+    weekday:
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+  action:
+  - type: turn_off
+    device_id: 23a20e2142896b4d8dcc1fd55647bf5e
+    entity_id: 05e5bedc72a5cfbe99daf08416bf6ba1
+    domain: switch
+  mode: single
+- id: '1712302291351'
+  alias: shut down NAS
+  description: ''
+  triggers:
+  - type: power
+    device_id: 9082405eb2f6962f4910bab8f90da15f
+    entity_id: ec8675e266e33ea1ba4488eab34bdbac
+    domain: sensor
+    below: 20
+    for:
+      hours: 0
+      minutes: 5
+      seconds: 0
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: 9082405eb2f6962f4910bab8f90da15f
+    entity_id: f08d2e691ee3ef3022e648bd3d8cd438
+    domain: switch
+  mode: single
+- id: '1712310099075'
+  alias: Nas Up
+  description: ''
+  triggers:
+  - type: turned_on
+    device_id: 9082405eb2f6962f4910bab8f90da15f
+    entity_id: f08d2e691ee3ef3022e648bd3d8cd438
+    domain: switch
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 10
+    trigger: device
+  conditions: []
+  actions:
+  - action: wake_on_lan.send_magic_packet
+    metadata: {}
+    data:
+      broadcast_port: 9
+      mac: 6C:92:BF:66:D0:BA
+  - metadata: {}
+    data:
+      broadcast_port: 9
+      mac: A4:BF:01:10:23:EC
+    action: wake_on_lan.send_magic_packet
+  mode: single
+- id: '1714837531680'
+  alias: mac book pro off
+  description: ''
+  trigger:
+  - type: power
+    platform: device
+    device_id: 1d6fcfc3d0db98d32108946c8b65734a
+    entity_id: 16ff981b2fbf3b7a38a54b2eb8eeb091
+    domain: sensor
+    below: 5
+    for:
+      hours: 0
+      minutes: 5
+      seconds: 0
+  condition: []
+  action:
+  - type: turn_off
+    device_id: 1d6fcfc3d0db98d32108946c8b65734a
+    entity_id: 92389ed71deae1f59d17d7ffb3c86267
+    domain: switch
+  mode: single
